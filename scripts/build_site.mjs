@@ -53,8 +53,13 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
+const SUPABASE_PUBLIC = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY
+  ? { url: process.env.SUPABASE_URL, anonKey: process.env.SUPABASE_ANON_KEY }
+  : null
+
 const APP_JS = String.raw`
 const EXAMS = __EXAMS__
+const SUPABASE = __SUPABASE__
 
 const $ = (id) => document.getElementById(id)
 
@@ -233,6 +238,146 @@ function render() {
       exam.source + 'の公表資料で確認してください。</p>')
 }
 
+
+// **会員機能。** 接続情報が無ければ、この節は何もしない。
+// 未接続のうちは会員カードを出さず、判定・推移・模試分布だけが動く。
+var TOKEN_KEY = 'erabiyori.token.v1'
+var member = { available: false, signedIn: false, isPaid: false, email: null }
+
+function token() { try { return localStorage.getItem(TOKEN_KEY) || '' } catch (e) { return '' } }
+function setToken(t) {
+  try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY) } catch (e) {}
+}
+
+// マジックリンクから戻ると、URLの # にトークンが乗っている。拾って消す。
+function captureToken() {
+  var m = location.hash && location.hash.match(/access_token=([^&]+)/)
+  if (!m) return
+  setToken(decodeURIComponent(m[1]))
+  history.replaceState(null, '', location.pathname + location.search)
+}
+
+function authHeaders() {
+  var t = token()
+  return t ? { Authorization: 'Bearer ' + t } : {}
+}
+
+async function loadMember() {
+  if (!SUPABASE) return
+  try {
+    var r = await fetch('/api/me', { headers: authHeaders() })
+    if (r.status === 401) { member = { available: true, signedIn: false, isPaid: false, email: null }; return }
+    var d = await r.json()
+    if (!d.available) return
+    member = { available: true, signedIn: true, isPaid: d.is_paid === true, email: d.email }
+  } catch (e) { /* 未接続とみなす */ }
+}
+
+async function signIn(email) {
+  var r = await fetch(SUPABASE.url + '/auth/v1/otp', {
+    method: 'POST',
+    headers: { apikey: SUPABASE.anonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, options: { email_redirect_to: location.origin + '/' } }),
+  })
+  return r.ok
+}
+
+async function loadAverage(exam) {
+  try {
+    var r = await fetch('/api/average?exam=' + encodeURIComponent(exam))
+    return await r.json()
+  } catch (e) { return { available: false, reason: 'error' } }
+}
+
+// 会員平均との差を出す。**30人に満たないうちは平均を出さない。**
+async function renderMemberAverage() {
+  var box = $('member-average')
+  if (!box) return
+  var exam = $('exam').value
+  var score = Number($('score').value)
+  var d = await loadAverage(exam)
+
+  if (!d.available && d.reason === 'not_configured') { box.innerHTML = ''; return }
+  if (!d.available && d.reason === 'not_enough') {
+    box.innerHTML = '<p class="mock-warn"><strong>会員平均はまだ出せません。</strong>' +
+      'いまの提供者は ' + (d.n || 0) + ' 人で、' + (d.min || 30) + ' 人に達していません。' +
+      '少人数の平均は数人の増減で大きく動くので、そろうまで出しません。</p>'
+    return
+  }
+  if (!d.available) { box.innerHTML = ''; return }
+
+  var diff = $('score').value === '' ? null : Math.round((score - d.mean) * 10) / 10
+  box.innerHTML = '<div class="mock"><p class="mock-head">会員平均の中での位置</p>' +
+    '<div class="mock-nums"><span><b>' + d.mean + '</b>点が会員平均</span>' +
+    '<span><b>' + d.median + '</b>点が中央値</span>' +
+    '<span><b>' + d.n + '</b>人</span>' +
+    (diff === null ? '' : '<span><b>' + (diff >= 0 ? '+' : '') + diff + '</b>点 会員平均との差</span>') +
+    '</div><p class="mock-warn"><strong>' + d.note + '</strong>自己申告なので検証はできません。' +
+    '本試験の受験者全体の平均でもありません。</p></div>'
+}
+
+function renderMember() {
+  var box = $('member-body')
+  if (!box) return
+  if (!SUPABASE) { $('member-card').hidden = true; return }
+  $('member-card').hidden = false
+
+  if (!member.signedIn) {
+    box.innerHTML = '<p class="full">メールを入れると、ログイン用のリンクが届きます。パスワードはありません。</p>' +
+      '<input type="email" id="email" placeholder="メールアドレス" />' +
+      '<button type="button" id="signin" class="save">ログインリンクを送る</button>' +
+      '<p class="full" id="signin-msg"></p>'
+    $('signin').addEventListener('click', async function () {
+      var v = $('email').value.trim()
+      if (!v) return
+      $('signin-msg').textContent = '送信中…'
+      var ok = await signIn(v)
+      $('signin-msg').textContent = ok ? 'メールを送りました。届いたリンクを開いてください。' : '送れませんでした。もう一度お試しください。'
+    })
+    return
+  }
+
+  box.innerHTML = '<p class="full">' + (member.email || '') +
+    (member.isPaid ? '（有料会員）' : '（無料会員）') + '</p>' +
+    '<label class="sec" style="font-weight:400"><input type="checkbox" id="share" style="width:auto" />' +
+    '<span>会員平均に、自分の得点を提供する</span></label>' +
+    '<p class="full">提供をオンにしたときだけ、得点がサーバに送られます。オフのままなら送りません。</p>' +
+    '<button type="button" id="push" class="save">いまの得点をアカウントに保存する</button>' +
+    '<p class="full" id="push-msg"></p>' +
+    (member.isPaid ? '' :
+      '<p class="mock-warn"><strong>有料会員でできること。</strong>会員平均との差を見る。' +
+      '端末をまたいで記録を引き継ぐ。<br />' +
+      '<button type="button" id="upgrade" class="save">有料会員になる</button></p>')
+
+  $('push').addEventListener('click', async function () {
+    if ($('score').value === '') { $('push-msg').textContent = '先に得点を入れてください。'; return }
+    var sections = {}
+    var inputs = document.querySelectorAll('[data-section]')
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].value !== '') sections[inputs[i].dataset.section] = Number(inputs[i].value)
+    }
+    var r = await fetch('/api/submit', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({
+        exam: $('exam').value,
+        score: Number($('score').value),
+        sections: sections,
+        shared: $('share').checked === true,
+      }),
+    })
+    $('push-msg').textContent = r.ok ? '保存しました。' : '保存できませんでした。'
+    if (r.ok) renderMemberAverage()
+  })
+
+  var up = $('upgrade')
+  if (up) up.addEventListener('click', async function () {
+    var r = await fetch('/api/checkout', { method: 'POST', headers: authHeaders() })
+    var d = await r.json()
+    if (d.url) location.href = d.url
+  })
+}
+
 // **スコアの推移。** 端末のlocalStorageにだけ置く。サーバには送らない。
 // 送らない代わりに、ブラウザを変えると引き継げない。そのことも画面に書く。
 var HKEY = 'erabiyori.history.v1'
@@ -350,12 +495,14 @@ function buildSections() {
       '" placeholder="/ ' + s.full + '" /></label>').join('')
 }
 
-$('exam').addEventListener('change', () => { buildSections(); render(); renderHistory() })
+$('exam').addEventListener('change', () => { buildSections(); render(); renderHistory(); renderMemberAverage() })
 $('save').addEventListener('click', addRecord)
 document.addEventListener('input', render)
 buildSections()
 render()
 renderHistory()
+captureToken()
+loadMember().then(function () { renderMember(); renderMemberAverage() })
 `
 
 const PAGE_CSS = `:root { color-scheme: light dark; }
@@ -453,6 +600,12 @@ async function main() {
       </div>
 
       <div id="result"></div>
+      <div id="member-average"></div>
+
+      <div class="card" id="member-card" hidden>
+        <label>会員</label>
+        <div id="member-body"></div>
+      </div>
 
       <div class="card">
         <label>スコアの推移</label>
@@ -480,7 +633,7 @@ async function main() {
       <p class="note">代わりに、<strong>公表されている合格点だけで言えること</strong>を出しています。
         判定の根拠は「過去◯年のうち何年で合格ラインを超えたか」で、1行で説明できます。</p>
     </div>
-    <script>${APP_JS.replace('__EXAMS__', JSON.stringify(exams))}</script>
+    <script>${APP_JS.replace('__EXAMS__', JSON.stringify(exams)).replace('__SUPABASE__', JSON.stringify(SUPABASE_PUBLIC))}</script>
   </body>
 </html>
 `
