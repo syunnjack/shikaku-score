@@ -1,8 +1,15 @@
+# 配信は Vercel に任せている（vercel.json 参照）。
+#
+# このワークフローは GitHub Pages 用で、いまは自動では走らない。
+# Pages に戻す場合は、下の push トリガーのコメントを外したうえで、
+# Settings → Pages → Build and deployment → Source: GitHub Actions を
+# 一度だけ手で選ぶ。ワークフローからは Pages を有効にできない
+# （GITHUB_TOKEN に権限が無く Resource not accessible by integration になる）。
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  # push:
+  #   branches: [main]
   workflow_dispatch:
 
 permissions:

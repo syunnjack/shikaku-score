@@ -67,17 +67,22 @@
 受験者数はアフィリエイトサイト経由の数字なので、公式の公表資料で
 差し替えてから `verified` を `true` にすること。
 
-## 配信の前提（一度だけ必要）
+## 配信
 
-**Settings → Pages → Build and deployment → Source を「GitHub Actions」にする。**
-これをやるまで、デプロイは `Get Pages site failed ... Not Found` で落ちる。
-ワークフローの `enablement: true` でも自動では有効にできない。`GITHUB_TOKEN` に
-Pages を作る権限が無く、`Resource not accessible by integration` で拒否されるため。
+**Vercel から配信する。** `vercel.json` にビルドコマンドと出力先を書いてある。
 
-有効にしたあと、独自ドメイン（`erabiyori.jp`）で配信するには、DNSが GitHub Pages を
-向いている必要がある。向いていない場合、Pages 自体は `syunnjack.github.io/shikaku-score`
-で見えるが、独自ドメインでは届かない。デプロイ後の実行ログに出る `page_url` と、
-Settings → Pages のドメイン検証結果で、どちらの状態かが分かる。
+    buildCommand      node scripts/build_site.mjs
+    outputDirectory   dist
+
+セットアップは一度だけ。Vercelでこのリポジトリを Import し、
+Project Settings → Domains に `erabiyori.jp` を追加する。
+**その画面に、いまのDNSと、何を書き換えればいいかが出る。**
+
+`SITE_DOMAIN` は設定しなくてよい。あれは GitHub Pages 用に `dist/CNAME` を
+作るための変数で、Vercelは CNAME ファイルを見ない。
+
+GitHub Pages は使っていない。`.github/workflows/deploy.yml` は手動実行だけ
+残してある。戻す場合の手順はそのファイルの先頭に書いた。
 
 ## 使い方
 
