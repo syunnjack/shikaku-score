@@ -28,7 +28,11 @@ jobs:
       - env:
           SITE_DOMAIN: erabiyori.jp
         run: node scripts/build_site.mjs
+      # Pages が未設定のリポジトリでは、この手順が Not Found で落ちる。
+      # enablement: true を付けると、ワークフロー側で Pages を有効にしてから進む。
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
