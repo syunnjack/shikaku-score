@@ -210,7 +210,9 @@ function render() {
     ? '<div class="mock"><p class="mock-head">' + pos.label + 'の中での位置</p>' +
       '<div class="mock-nums"><span><b>' + pos.hensachi + '</b>偏差値</span>' +
       '<span><b>' + pos.rank + '</b>位 / ' + pos.n + '人</span>' +
-      '<span><b>' + pos.mean + '</b>点が平均</span></div>' +
+      '<span><b>' + pos.mean + '</b>点が平均</span>' +
+      '<span><b>' + (score - pos.mean >= 0 ? '+' : '') + (Math.round((score - pos.mean) * 10) / 10) +
+      '</b>点 平均との差</span></div>' +
       '<p class="mock-warn"><strong>これは本試験での位置ではありません。</strong>' +
       'この模試は181点以上が27.9%で、本試験の合格率14.54%の約2倍です。' +
       '本気の受験生だけが受けている、上位に偏った集団です。</p>' +
@@ -231,6 +233,110 @@ function render() {
       exam.source + 'の公表資料で確認してください。</p>')
 }
 
+// **スコアの推移。** 端末のlocalStorageにだけ置く。サーバには送らない。
+// 送らない代わりに、ブラウザを変えると引き継げない。そのことも画面に書く。
+var HKEY = 'erabiyori.history.v1'
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HKEY) || '[]') } catch (e) { return [] }
+}
+
+function saveHistory(list) {
+  try { localStorage.setItem(HKEY, JSON.stringify(list)) } catch (e) {}
+}
+
+function passLineOf(exam) {
+  if (exam.type === 'absolute') return exam.passMark
+  var marks = (exam.passMarks || []).map(function (m) { return m.mark })
+  return marks.length ? Math.max.apply(null, marks) : null
+}
+
+function addRecord() {
+  var key = $('exam').value
+  if ($('score').value === '') return
+  var list = loadHistory()
+  list.push({ t: new Date().toISOString().slice(0, 10), exam: key, score: Number($('score').value) })
+  saveHistory(list)
+  renderHistory()
+}
+
+function removeRecord(i) {
+  var list = loadHistory()
+  var key = $('exam').value
+  var nth = -1
+  for (var j = 0; j < list.length; j++) {
+    if (list[j].exam === key) { nth++; if (nth === i) { list.splice(j, 1); break } }
+  }
+  saveHistory(list)
+  renderHistory()
+}
+
+function renderHistory() {
+  var key = $('exam').value
+  var exam = EXAMS[key]
+  var box = $('history-body')
+  var list = loadHistory().filter(function (r) { return r.exam === key })
+
+  if (!list.length) {
+    box.innerHTML = '<p class="empty">まだ記録がありません。得点を入れて「この端末に記録する」を押すと、ここに推移が出ます。</p>'
+    return
+  }
+
+  var line = passLineOf(exam)
+  var vals = list.map(function (r) { return r.score })
+  if (line !== null) vals = vals.concat([line])
+  var min = Math.min.apply(null, vals)
+  var max = Math.max.apply(null, vals)
+  var pad = Math.max(3, (max - min) * 0.15)
+  var lo = Math.floor(min - pad)
+  var hi = Math.ceil(max + pad)
+  var W = 640, H = 210, L = 46, R = 16, T = 18, B = 30
+  var x = function (i) { return list.length < 2 ? L : L + ((W - L - R) * i) / (list.length - 1) }
+  var y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo || 1)) }
+
+  var svg = '<svg class="trend" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="記録した得点の推移">'
+  svg += '<line x1="' + L + '" y1="' + y(lo) + '" x2="' + (W - R) + '" y2="' + y(lo) + '" stroke="#e2e6ef"/>'
+  svg += '<line x1="' + L + '" y1="' + y(hi) + '" x2="' + (W - R) + '" y2="' + y(hi) + '" stroke="#e2e6ef"/>'
+  svg += '<text x="' + (L - 8) + '" y="' + y(hi) + '" text-anchor="end" dominant-baseline="middle" font-size="10" fill="#9aa2b1">' + hi + '</text>'
+  svg += '<text x="' + (L - 8) + '" y="' + y(lo) + '" text-anchor="end" dominant-baseline="middle" font-size="10" fill="#9aa2b1">' + lo + '</text>'
+  if (line !== null && line >= lo && line <= hi) {
+    svg += '<line x1="' + L + '" y1="' + y(line) + '" x2="' + (W - R) + '" y2="' + y(line) + '" stroke="#b4232c" stroke-dasharray="4 4"/>'
+    svg += '<text x="' + (W - R) + '" y="' + (y(line) - 6) + '" text-anchor="end" font-size="10" fill="#b4232c">合格ライン ' + line + '</text>'
+  }
+  var pts = list.map(function (r, i) { return x(i) + ',' + y(r.score) }).join(' ')
+  svg += '<polyline points="' + pts + '" fill="none" stroke="#2b4d7e" stroke-width="2"/>'
+  list.forEach(function (r, i) {
+    svg += '<circle cx="' + x(i) + '" cy="' + y(r.score) + '" r="4" fill="#2b4d7e"/>'
+    svg += '<text x="' + x(i) + '" y="' + (y(r.score) - 11) + '" text-anchor="middle" font-size="11" fill="#1b1f2a">' + r.score + '</text>'
+    var anchorX = i === 0 ? 'start' : i === list.length - 1 ? 'end' : 'middle'
+    svg += '<text x="' + x(i) + '" y="' + (H - 9) + '" text-anchor="' + anchorX + '" font-size="10" fill="#9aa2b1">' + r.t + '</text>'
+  })
+  svg += '</svg>'
+
+  var rows = list.map(function (r, i) {
+    var d = line === null ? null : r.score - line
+    return '<div class="hrow"><span class="ht">' + r.t + '</span>' +
+      '<span class="hs">' + r.score + exam.unit + '</span>' +
+      '<span class="hd ' + (d === null ? '' : d >= 0 ? 'good' : 'bad') + '">' +
+      (d === null ? '—' : '合格ラインと ' + (d >= 0 ? '+' : '') + d + exam.unit) + '</span>' +
+      '<button type="button" class="hdel" data-i="' + i + '">削除</button></div>'
+  }).join('')
+
+  var first = list[0].score
+  var last = list[list.length - 1].score
+  var move = list.length > 1
+    ? '<p class="note">最初の記録から <strong>' + (last - first >= 0 ? '+' : '') + (last - first) + exam.unit + '</strong>。'
+      + (line === null ? '' : '合格ラインまで残り <strong>' + Math.max(0, line - last) + exam.unit + '</strong>。') + '</p>'
+    : ''
+
+  box.innerHTML = svg + '<div class="hlist">' + rows + '</div>' + move
+
+  var dels = box.querySelectorAll('.hdel')
+  for (var k = 0; k < dels.length; k++) {
+    dels[k].addEventListener('click', function (e) { removeRecord(Number(e.target.dataset.i)) })
+  }
+}
+
 function buildSections() {
   const exam = EXAMS[$('exam').value]
   const wrap = $('sections')
@@ -244,10 +350,12 @@ function buildSections() {
       '" placeholder="/ ' + s.full + '" /></label>').join('')
 }
 
-$('exam').addEventListener('change', () => { buildSections(); render() })
+$('exam').addEventListener('change', () => { buildSections(); render(); renderHistory() })
+$('save').addEventListener('click', addRecord)
 document.addEventListener('input', render)
 buildSections()
 render()
+renderHistory()
 `
 
 const PAGE_CSS = `:root { color-scheme: light dark; }
@@ -292,6 +400,20 @@ select, input[type=number] { font:inherit; font-size:16px; padding:10px 12px;
 .mock-warn { font-size:12px; color:#6b7280; margin:14px 0 0;
              border-left:3px solid #b8860b; padding-left:11px; line-height:1.7; }
 .mock-warn strong { color:#1b1f2a; }
+.save { font:inherit; font-size:14px; font-weight:600; padding:10px 16px; margin:12px 0 4px;
+        border:1px solid #2b4d7e; border-radius:8px; background:#2b4d7e; color:#fff; cursor:pointer; }
+.save:hover { background:#24416c; }
+.trend { width:100%; height:auto; margin:14px 0 6px; }
+.hlist { border:1px solid #e2e6ef; border-radius:8px; overflow:hidden; background:#fff; }
+.hrow { display:flex; align-items:center; gap:12px; padding:9px 12px;
+        border-bottom:1px solid #eceff5; font-size:13px; }
+.hrow:last-child { border-bottom:0; }
+.ht { color:#6b7280; flex:0 0 92px; font-variant-numeric:tabular-nums; }
+.hs { font-weight:700; flex:0 0 74px; }
+.hd { flex:1; font-size:12px; color:#6b7280; }
+.hd.good { color:#1a7f4b; } .hd.bad { color:#b4232c; }
+.hdel { font:inherit; font-size:11px; padding:4px 9px; border:1px solid #d6dbe5;
+        border-radius:6px; background:#fff; color:#6b7280; cursor:pointer; }
 .empty { color:#9aa2b1; font-size:14px; margin:0; }
 .note { font-size:13px; color:#6b7280; margin:18px 0 0; }
 .note strong { color:#1b1f2a; }`
@@ -331,6 +453,14 @@ async function main() {
       </div>
 
       <div id="result"></div>
+
+      <div class="card">
+        <label>スコアの推移</label>
+        <p class="full">記録は<strong>この端末の中だけ</strong>に残ります。サーバには送りません。
+          そのぶん、ブラウザを変えると引き継げません。</p>
+        <button type="button" id="save" class="save">この端末に記録する</button>
+        <div id="history-body"></div>
+      </div>
 
       <p class="note"><strong>繰り返し解いた回数は、一切加点していません。</strong>
         「何度も繰り返すとスコアが上がる」作りにすると、
