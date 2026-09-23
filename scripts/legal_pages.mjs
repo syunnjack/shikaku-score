@@ -9,7 +9,7 @@
 // **公開前に、運営者本人が全文を読んで確かめること。** 雛形であって、
 // 専門家の確認を経たものではない。
 
-import { LEGAL, PLAN, yen } from '../lib/legal.mjs'
+import { LEGAL, PLAN, yen, sellerName } from '../lib/legal.mjs'
 
 const ON_REQUEST = '請求があった場合は、遅滞なく開示します。'
 
@@ -50,7 +50,7 @@ export function legalPages({ css, escapeHtml }) {
   const feats = PLAN.features.map((f) => '<li>' + e(f) + '</li>').join('')
 
   const rows = [
-    ['販売事業者', e(LEGAL.seller)],
+    ['販売事業者', e(sellerName())],
     ['運営統括責任者', e(LEGAL.manager)],
     ['所在地', address],
     ['電話番号', phone],
@@ -72,7 +72,7 @@ export function legalPages({ css, escapeHtml }) {
     '<table>' + rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('') + '</table>' })
 
   const terms = shell({ css, escapeHtml, title: '利用規約', body: `
-      <p>この規約は、${e(LEGAL.seller)}（以下「運営者」）が提供する「合格ラインとの距離」（以下「本サービス」）の利用条件を定めます。</p>
+      <p>この規約は、${e(sellerName())}（以下「運営者」）が提供する「合格ラインとの距離」（以下「本サービス」）の利用条件を定めます。</p>
 
       <h2>第1条（適用）</h2>
       <p>本規約は、本サービスを利用するすべての方（以下「利用者」）に適用されます。会員登録または有料会員への申込みをした時点で、本規約に同意したものとみなします。</p>
@@ -125,7 +125,7 @@ export function legalPages({ css, escapeHtml }) {
       <p class="full">${since} 施行</p>` })
 
   const privacy = shell({ css, escapeHtml, title: 'プライバシーポリシー', body: `
-      <p>${e(LEGAL.seller)}（以下「運営者」）は、「合格ラインとの距離」（以下「本サービス」）で預かる情報を、次のとおり扱います。</p>
+      <p>${e(sellerName())}（以下「運営者」）は、「合格ラインとの距離」（以下「本サービス」）で預かる情報を、次のとおり扱います。</p>
 
       <h2>1. 預かる情報</h2>
       <ul>
@@ -164,7 +164,7 @@ export function legalPages({ css, escapeHtml }) {
       <p>預かっている情報の開示・訂正・削除、利用の停止を希望する場合は、登録したメールアドレスから下記の窓口までご連絡ください。本人であることを確かめたうえで、遅滞なく対応します。</p>
 
       <h2>7. 窓口</h2>
-      <p>${e(LEGAL.seller)}<br />${address}<br />${mail}</p>
+      <p>${e(sellerName())}<br />${address}<br />${mail}</p>
 
       <h2>8. 改定</h2>
       <p>このポリシーを改定するときは、本サービス上で知らせます。</p>
