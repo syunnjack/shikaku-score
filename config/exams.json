@@ -243,7 +243,63 @@
           ]
         ],
         "source": "本人が受験した模試の成績表"
-      }
+      },
+      "sectionSets": {
+        "subject": {
+          "label": "科目別",
+          "sections": [
+            {
+              "name": "基礎法学",
+              "full": 8
+            },
+            {
+              "name": "憲法",
+              "full": 28
+            },
+            {
+              "name": "民法",
+              "full": 76
+            },
+            {
+              "name": "行政法",
+              "full": 112
+            },
+            {
+              "name": "商法・会社法",
+              "full": 20
+            },
+            {
+              "name": "基礎知識",
+              "full": 56,
+              "warn": "24点未満で足切り"
+            }
+          ]
+        },
+        "format": {
+          "label": "形式別",
+          "_note": "配点は行政書士試験研究センターの公表資料による",
+          "sections": [
+            {
+              "name": "法令等 択一式",
+              "full": 160
+            },
+            {
+              "name": "法令等 多肢選択式",
+              "full": 24
+            },
+            {
+              "name": "法令等 記述式",
+              "full": 60
+            },
+            {
+              "name": "基礎知識",
+              "full": 56,
+              "warn": "24点未満で足切り"
+            }
+          ]
+        }
+      },
+      "defaultSectionSet": "subject"
     }
   }
 }

@@ -1,15 +1,19 @@
 // 得点を入れると、合格ラインとの距離と判定を出す。**ブラウザの中だけで動く。**
 //
-// ## スタディングの作りと、どこを変えたか
+// ## 設計の前提
 //
-// スタディングのAI実力スコアは「**繰り返し学習した場合**にスコアが高くなる」と
-// 明記されている。つまり「できるか」と「やったか」が1つの数字に混ざっていて、
-// どちらがどれだけ効いているか利用者に見えない。
+// **入力された得点だけで判定する。**
+// 学習履歴・解答回数・教材の消化率は受け取らないし、加点もしない。
 //
-// 繰り返した人が受かりやすいのは事実だろうが、それは相関であって因果ではない。
-// しかも**教材を使うほど数字が上がる**のは、教材提供者に都合がよい。
+// 「何回やったか」を点数に混ぜると、**「できるか」と「やったか」が1つの数字になり、
+// どちらがどれだけ効いているか利用者に見えない。**
+// 繰り返した人が受かりやすいのは相関であって因果ではない。
 //
-// ここでは**繰り返しを一切加点しない。** 入れた得点だけで判定する。
+// **推定も予測もしない。** 出すのは、入れた得点と公表値を突き合わせた結果だけ。
+//
+// 資格講座のAI採点・実力推定には特許が成立しているものがある。
+// **このツールは解答履歴を持たず、復習の順番を決めず、将来の点数を予測しない。**
+// 「AI」とも名乗らない。この範囲を出るときは、先に特許を調べる。
 //
 // ## 偏差値と順位を出さない理由
 //
@@ -18,12 +22,6 @@
 // 合格率と合格点から逆算しようにも、式が1本で未知数が2つあり解けない。
 //
 // 仮定を置けば数字は作れるが、**根拠のない偏差値は嘘と同じ**なので出さない。
-// 代わりに、仮定なしで言えることだけを出す。
-//
-//   ・合格点との差              公表された合格点だけで出る
-//   ・過去N年で何年合格していたか  同上
-//   ・ABCDE                    上の年数で定義する。根拠を1行で説明できる
-//   ・合格ラインは上位◯%        公表された合格率そのもの
 //
 // ## 資格で合格基準の性質が違う
 //
@@ -73,6 +71,100 @@ const SUPABASE = __SUPABASE__
 const BILLING = __BILLING__
 
 const $ = (id) => document.getElementById(id)
+
+
+
+// **内訳は「科目別」と「形式別」を切り替えられる。**
+// 差分分析は形式別のほうが効く。科目を8点上げるのと、記述式を8点上げるのでは
+// 手の打ち方がまるで違うため。設定が無い試験は、従来どおり sections をそのまま使う。
+var SECTION_SET = {}
+
+function sectionSets(exam) { return exam.sectionSets || null }
+
+function activeSetKey(exam) {
+  const sets = sectionSets(exam)
+  if (!sets) return null
+  const k = SECTION_SET[exam.key]
+  return (k && sets[k]) ? k : (exam.defaultSectionSet || Object.keys(sets)[0])
+}
+
+function activeSections(exam) {
+  const sets = sectionSets(exam)
+  if (!sets) return exam.sections || []
+  const k = activeSetKey(exam)
+  return (sets[k] && sets[k].sections) || exam.sections || []
+}
+
+// **差分分析。** 解答した1回ぶんの得点と、合格レベルとの距離を形式ごとに出す。
+//
+// ## 何を「合格レベル」と置くか
+//
+// **形式ごとの合格者得点は公表されていない。** だから「合格者はここで何点」とは書かない。
+// 代わりに、公表されている合格点から必要得点率を出し、**その率を全形式に当てた場合**を
+// 基準線にする。これは仮定ではなく定義で、画面にもそう書く。
+//
+//   必要得点率 = 合格点 ÷ 満点        行政書士なら 180 ÷ 300 = 60.0%
+//   基準線     = 各形式の満点 × 必要得点率
+//   差分       = 基準線 − 得点        （プラスなら足りていない）
+//
+// **足切りのある形式は、基準線と足切りの高いほうを使う。**
+// 基礎知識は 56×60% = 33.6点 が基準線で、足切り24点より高い。低いほうに合わせない。
+//
+// ## 並べる順番
+//
+// **差分の大きい順。** 「いちばん苦手な形式」ではなく「いちばん点が落ちている形式」を上に出す。
+// 満点8点の科目を0点から満点にしても8点しか増えないが、満点60点の形式で
+// 20点足りなければ20点ぶんの余地がある。**得点率ではなく点数で並べる。**
+function gapAnalysis(exam, score, sectionScores) {
+  if (exam.type !== 'absolute' || !exam.passMark) return null
+  const sections = activeSections(exam)
+  if (!sections.length) return null
+
+  const need = exam.passMark / exam.full
+  const cutMap = {}
+  for (const c of exam.cutoffs || []) cutMap[c.name] = c.min
+
+  const items = []
+  for (const s of sections) {
+    const got = sectionScores[s.name]
+    if (got === null || got === undefined) continue
+    const line = Math.max(Math.round(s.full * need * 10) / 10, cutMap[s.name] || 0)
+    const gap = Math.round((line - got) * 10) / 10
+    items.push({
+      name: s.name,
+      got: got,
+      full: s.full,
+      line: line,
+      gap: gap,
+      rate: Math.round((got / s.full) * 1000) / 10,
+      byCutoff: (cutMap[s.name] || 0) > Math.round(s.full * need * 10) / 10,
+    })
+  }
+  if (!items.length) return null
+
+  const entered = items.reduce(function (a, i) { return a + i.got }, 0)
+  const short = items.filter(function (i) { return i.gap > 0 })
+  short.sort(function (a, b) { return b.gap - a.gap })
+
+  const totalGap = Math.round(short.reduce(function (a, i) { return a + i.gap }, 0) * 10) / 10
+  const totalShort = Math.round((exam.passMark - score) * 10) / 10
+
+  // **1つだけ直して届くか。** 上位1件の差分を埋めたときに合格点に乗るかどうか。
+  const top = short[0] || null
+  const oneEnough = top && totalShort > 0 ? top.gap >= totalShort : false
+
+  return {
+    need: Math.round(need * 1000) / 10,
+    items: items,
+    short: short,
+    totalGap: totalGap,
+    totalShort: totalShort,
+    entered: entered,
+    covered: Math.round((entered / exam.full) * 1000) / 10,
+    top: top,
+    oneEnough: oneEnough,
+  }
+}
 
 function judge(exam, score, sectionScores) {
   const out = { rows: [], grade: null, gradeWhy: '', blocked: null }
@@ -197,7 +289,7 @@ function render() {
 
   $('full').textContent = exam.full + exam.unit + '満点'
   $('warnline').textContent = exam.mock
-    ? '記述式を含んだ300点満点で入れてください（AI実力スコアの240点満点とは分母が違います）'
+    ? '記述式を含んだ300点満点で入れてください（記述式を除いた240点満点の数字とは分母が違います）'
     : ''
   $('score').max = exam.full
 
@@ -233,14 +325,15 @@ function render() {
       'この模試は181点以上が27.9%で、本試験の合格率14.54%の約2倍です。' +
       '本気の受験生だけが受けている、上位に偏った集団です。</p>' +
       '<p class="mock-warn"><strong>記述式60点を含んだ300点満点で入れてください。</strong>' +
-      'スタディングのAI実力スコアは記述式を除いた240点満点なので、' +
-      'その数字をそのまま入れると分母が違い、意味のない偏差値が出ます。</p></div>'
+      '記述式を除いた240点満点の数字を入れると分母が違い、意味のない偏差値が出ます。</p></div>'
     : ''
+
+  const gapBox = gapHtml(gapAnalysis(exam, score, sectionScores), exam)
 
   box.innerHTML =
     '<div class="grade grade-' + result.grade + '"><span class="letter">' + result.grade + '</span>' +
     '<span class="why">' + result.gradeWhy + '</span></div>' +
-    '<div class="rows">' + rows + '</div>' + mockHtml +
+    '<div class="rows">' + rows + '</div>' + gapBox + mockHtml +
     '<p class="rate">この試験の合格率は ' + exam.passRate + '％。' +
     '受験者 ' + exam.applicants.toLocaleString('ja-JP') + '人のうち ' +
     exam.passers.toLocaleString('ja-JP') + '人が合格しています。</p>' +
@@ -249,6 +342,51 @@ function render() {
       exam.source + 'の公表資料で確認してください。</p>')
 }
 
+
+
+// 差分分析の描画。**無料は先頭1件だけ。全形式の内訳と優先順位は有料会員。**
+// 無料でも「どこが一番落ちているか」は分かる。**有料は、そこから何をどの順で
+// 埋めれば合格点に届くかが全形式ぶん出る。**
+function gapHtml(g, exam) {
+  if (!g) return ''
+
+  const head = '<div class="gap"><p class="gap-head">合格レベルとの差分</p>' +
+    '<p class="gap-def">基準線は <b>各形式の満点 × ' + g.need + '%</b>（合格点' +
+    exam.passMark + ' ÷ 満点' + exam.full + '）です。' +
+    '<strong>形式ごとの合格者得点は公表されていないため、合格者の点は書きません。</strong>' +
+    '足切りのある形式は、基準線と足切りの高いほうを使います。</p>'
+
+  if (!g.short.length) {
+    return head + '<p class="gap-ok"><strong>入れた形式は、すべて基準線に届いています。</strong></p></div>'
+  }
+
+  const row = function (i, rank) {
+    return '<div class="gap-row"><span class="gap-rank">' + rank + '</span>' +
+      '<span class="gap-name">' + i.name + (i.byCutoff ? '<em>足切り基準</em>' : '') + '</span>' +
+      '<span class="gap-num"><b>' + i.gap + '</b>点 不足</span>' +
+      '<span class="gap-sub">' + i.got + ' / ' + i.full + '点（' + i.rate + '%）　基準線 ' + i.line + '点</span>' +
+      '<span class="gap-bar"><i style="width:' + Math.min(100, Math.round((i.got / i.line) * 100)) + '%"></i></span></div>'
+  }
+
+  const first = row(g.short[0], 1)
+  const rest = g.short.slice(1).map(function (i, n) { return row(i, n + 2) }).join('')
+
+  const verdict = g.totalShort > 0
+    ? '<p class="gap-verdict">合格点まで <b>' + g.totalShort + '</b>点。' +
+      (g.oneEnough
+        ? '<strong>' + g.top.name + 'を基準線まで戻すだけで届きます。</strong>'
+        : '<strong>1つ埋めるだけでは届きません。</strong>上から順に埋めた場合、' +
+          '合計 ' + g.totalGap + '点ぶんの余地があります。') + '</p>'
+    : '<p class="gap-verdict">総合では合格点を超えています。上の不足は、崩れたときに効く場所です。</p>'
+
+  const locked = (member.isPaid || !BILLING.available)
+    ? rest
+    : (rest ? '<div class="gap-lock"><p><strong>残り ' + (g.short.length - 1) + ' 形式の内訳と、埋める順番は有料会員で見られます。</strong></p></div>' : '')
+
+  return head + verdict + '<div class="gap-rows">' + first + locked + '</div>' +
+    '<p class="gap-note"><strong>この分析は、入れた得点だけを使っています。</strong>' +
+    '解答の回数や学習時間は受け取っていません。推定も予測もしていません。</p></div>'
+}
 
 // **会員機能。** 接続情報が無ければ、この節は何もしない。
 // 未接続のうちは会員カードを出さず、判定・推移・模試分布だけが動く。
@@ -521,14 +659,33 @@ function buildSections() {
   const exam = EXAMS[$('exam').value]
   const wrap = $('sections')
   const warn = (exam.cutoffs || []).map((c) => c.name)
+  const sets = sectionSets(exam)
+  const cur = activeSetKey(exam)
 
-  wrap.innerHTML = '<p class="sub">科目別（分かる範囲で。空欄でも判定は出ます）</p>' +
-    exam.sections.map((s) =>
+  const tabs = sets
+    ? '<div class="setswitch">' + Object.keys(sets).map(function (k) {
+        return '<button type="button" class="settab' + (k === cur ? ' on' : '') +
+               '" data-set="' + k + '">' + sets[k].label + '</button>'
+      }).join('') + '</div>'
+    : ''
+
+  wrap.innerHTML = tabs +
+    '<p class="sub">' + (sets ? sets[cur].label : '科目別') +
+    '（分かる範囲で。空欄でも判定は出ます）</p>' +
+    activeSections(exam).map((s) =>
       '<label class="sec"><span>' + s.name +
       (warn.includes(s.name) ? '<em>足切りあり</em>' : '') + '</span>' +
       '<input type="number" data-section="' + s.name + '" min="0" max="' + s.full +
       '" placeholder="/ ' + s.full + '" /></label>').join('')
 }
+
+$('sections').addEventListener('click', function (e) {
+  const k = e.target && e.target.dataset ? e.target.dataset.set : null
+  if (!k) return
+  SECTION_SET[$('exam').value] = k
+  buildSections()
+  render()
+})
 
 $('exam').addEventListener('change', () => { buildSections(); render(); renderHistory(); renderMemberAverage() })
 $('save').addEventListener('click', addRecord)
@@ -541,6 +698,33 @@ loadMember().then(function () { renderMember(); renderMemberAverage() })
 `
 
 const PAGE_CSS = `:root { color-scheme: light dark; }
+.setswitch { display:flex; gap:6px; margin:0 0 10px; }
+.settab { font:inherit; font-size:13px; padding:5px 12px; border:1px solid #d6dbe5;
+          background:#fff; color:#4b5563; border-radius:99px; cursor:pointer; }
+.settab.on { background:#2b4870; color:#fff; border-color:#2b4870; font-weight:700; }
+.gap { margin:18px 0 0; padding:16px; background:#fff; border:1px solid #e2e6ef; border-radius:10px; }
+.gap-head { margin:0 0 6px; font-weight:700; font-size:15px; }
+.gap-def { margin:0 0 12px; font-size:12px; color:#6b7280; line-height:1.7; }
+.gap-verdict { margin:0 0 14px; font-size:14px; padding:10px 12px; background:#f2f5fa; border-radius:6px; }
+.gap-verdict b { font-size:19px; color:#8c2f39; }
+.gap-rows { display:flex; flex-direction:column; gap:12px; }
+.gap-row { display:grid; grid-template-columns:26px 1fr auto; gap:2px 10px; align-items:baseline; }
+.gap-rank { grid-row:1/3; width:24px; height:24px; border-radius:50%; background:#2b4870; color:#fff;
+            font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.gap-name { font-weight:700; font-size:14px; }
+.gap-name em { font-style:normal; font-size:11px; background:#fdecec; color:#8c2f39;
+               padding:1px 6px; border-radius:99px; margin-left:6px; }
+.gap-num { font-size:13px; color:#8c2f39; white-space:nowrap; }
+.gap-num b { font-size:17px; }
+.gap-sub { grid-column:2/4; font-size:12px; color:#6b7280; }
+.gap-bar { grid-column:2/4; height:6px; background:#eef1f6; border-radius:99px; overflow:hidden; }
+.gap-bar i { display:block; height:100%; background:#2b4870; }
+.gap-ok { margin:0; font-size:14px; }
+.gap-lock { margin:4px 0 0; padding:12px; background:#f7f8fb; border:1px dashed #c9d0dc;
+            border-radius:8px; font-size:13px; color:#4b5563; }
+.gap-lock p { margin:0; }
+.gap-note { margin:14px 0 0; font-size:12px; color:#6b7280; }
+
 * { box-sizing: border-box; }
 body { margin:0; font-family:"Hiragino Sans","Yu Gothic",system-ui,sans-serif;
        color:#1b1f2a; background:#f7f8fb; line-height:1.8; }
@@ -609,6 +793,8 @@ async function main() {
 
   const config = JSON.parse(await readFile(path.join(root, 'config', 'exams.json'), 'utf8'))
   const exams = config.exams
+  // **切り替えのために自分の key を持たせる。** 設定側には書かない（重複するため）
+  for (const k of Object.keys(exams)) exams[k].key = k
 
   const options = Object.entries(exams)
     .map(([key, exam]) => `<option value="${key}">${escapeHtml(exam.name)}</option>`).join('')
