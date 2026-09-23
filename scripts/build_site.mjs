@@ -39,6 +39,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { LEGAL, PLAN, missingLegal, billingEnabledFlag, billingReady, yen } from '../lib/legal.mjs'
+import { legalPages } from './legal_pages.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const outDir = path.join(root, 'dist')
@@ -57,9 +59,18 @@ const SUPABASE_PUBLIC = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KE
   ? { url: process.env.SUPABASE_URL, anonKey: process.env.SUPABASE_ANON_KEY }
   : null
 
+// 課金の案内を画面に出すのは、表記が揃い BILLING_ENABLED=1 のときだけ。
+// 値はビルド時に埋め込むので、HTMLとして安全な形にしてから渡す。
+const LEGAL_MISSING = missingLegal()
+const LEGAL_READY = LEGAL_MISSING.length === 0
+const BILLING_PUBLIC = billingReady()
+  ? { planName: escapeHtml(PLAN.name), price: escapeHtml(yen(LEGAL.priceMonthlyYen)), features: PLAN.features.map(escapeHtml) }
+  : null
+
 const APP_JS = String.raw`
 const EXAMS = __EXAMS__
 const SUPABASE = __SUPABASE__
+const BILLING = __BILLING__
 
 const $ = (id) => document.getElementById(id)
 
@@ -341,13 +352,13 @@ function renderMember() {
     (member.isPaid ? '（有料会員）' : '（無料会員）') + '</p>' +
     '<label class="sec" style="font-weight:400"><input type="checkbox" id="share" style="width:auto" />' +
     '<span>会員平均に、自分の得点を提供する</span></label>' +
-    '<p class="full">提供をオンにしたときだけ、得点がサーバに送られます。オフのままなら送りません。</p>' +
+    '<p class="full">下のボタンを押したときだけ、得点がサーバに保存されます。' +
+    '会員平均の集計に入るのは、提供をオンにして保存した得点だけです。</p>' +
     '<button type="button" id="push" class="save">いまの得点をアカウントに保存する</button>' +
     '<p class="full" id="push-msg"></p>' +
-    (member.isPaid ? '' :
-      '<p class="mock-warn"><strong>有料会員でできること。</strong>会員平均との差を見る。' +
-      '端末をまたいで記録を引き継ぐ。<br />' +
-      '<button type="button" id="upgrade" class="save">有料会員になる</button></p>')
+    (member.isPaid
+      ? '<p class="full"><button type="button" id="portal" class="hdel">解約する・支払い方法を変える</button></p>'
+      : upgradeHtml())
 
   $('push').addEventListener('click', async function () {
     if ($('score').value === '') { $('push-msg').textContent = '先に得点を入れてください。'; return }
@@ -376,6 +387,30 @@ function renderMember() {
     var d = await r.json()
     if (d.url) location.href = d.url
   })
+
+  var portal = $('portal')
+  if (portal) portal.addEventListener('click', async function () {
+    var r = await fetch('/api/portal', { method: 'POST', headers: authHeaders() })
+    var d = await r.json()
+    if (d.url) location.href = d.url
+  })
+}
+
+// 有料会員の案内。**課金の準備が整うまで、申込ボタンは出さない。**
+// 出すときは、押す前に価格・更新・解約の条件を並べる（決済ページにも同じ文を出す）。
+function upgradeHtml() {
+  var feats = '会員平均との差を見る。端末をまたいで記録を引き継ぐ。'
+  if (!BILLING) {
+    return '<p class="mock-warn"><strong>有料会員は準備中です。</strong>' + feats + '<br />' +
+      '始めるときは、この欄でお知らせします。いまは無料の機能だけ使えます。</p>'
+  }
+  return '<p class="mock-warn"><strong>' + BILLING.planName + '　月額' + BILLING.price + '（税込）</strong><br />' +
+    BILLING.features.join('。') + '。<br />' +
+    '申込日から1か月ごとに自動で更新し、そのつど請求します。' +
+    'いつでもこの欄から解約でき、解約後も期間の終わりまで使えます。日割りの返金はありません。<br />' +
+    '<a href="/terms">利用規約</a>・<a href="/tokushoho">特定商取引法に基づく表記</a>・' +
+    '<a href="/privacy">プライバシーポリシー</a>に同意のうえお申し込みください。<br />' +
+    '<button type="button" id="upgrade" class="save">同意して申し込む</button></p>'
 }
 
 // **スコアの推移。** 端末のlocalStorageにだけ置く。サーバには送らない。
@@ -566,11 +601,27 @@ select, input[type=number] { font:inherit; font-size:16px; padding:10px 12px;
 .note strong { color:#1b1f2a; }`
 
 async function main() {
+  // **課金を有効にしたのに表記が欠けていたら、ビルドを止める。** 黙って案内を
+  // 隠すだけにすると、有効にしたつもりで始まっていないことに気づけない。
+  if (billingEnabledFlag() && !LEGAL_READY) {
+    throw new Error('BILLING_ENABLED=1 ですが、lib/legal.mjs に空欄があります: ' + LEGAL_MISSING.join('、'))
+  }
+
   const config = JSON.parse(await readFile(path.join(root, 'config', 'exams.json'), 'utf8'))
   const exams = config.exams
 
   const options = Object.entries(exams)
     .map(([key, exam]) => `<option value="${key}">${escapeHtml(exam.name)}</option>`).join('')
+
+  // ログインが使えるようになると、得点をサーバに保存できる。
+  // 「どこにも送信されません」のままにすると、既存の利用者との約束と食い違う。
+  const promise = SUPABASE_PUBLIC
+    ? '入力した内容は、会員欄で保存を押さない限り送信されません。'
+    : '入力した内容はどこにも送信されません。'
+
+  const footer = LEGAL_READY
+    ? `<p class="note legal-links"><a href="/terms">利用規約</a>　<a href="/privacy">プライバシーポリシー</a>　<a href="/tokushoho">特定商取引法に基づく表記</a></p>`
+    : ''
 
   const html = `<!doctype html>
 <html lang="ja">
@@ -578,14 +629,14 @@ async function main() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>合格ラインとの距離｜宅建・行政書士</title>
-    <meta name="description" content="得点を入れると、合格ラインとの距離と判定が出ます。過去の合格点で判定しているので、根拠を1行で説明できます。入力した内容はどこにも送信されません。" />
+    <meta name="description" content="得点を入れると、合格ラインとの距離と判定が出ます。過去の合格点で判定しているので、根拠を1行で説明できます。${promise}" />
     <style>${PAGE_CSS}</style>
   </head>
   <body>
     <div class="wrap">
       <h1>合格ラインとの距離</h1>
       <p class="lead">得点を入れると、合格ラインまでの距離と判定が出ます。<br />
-        <strong>入力した内容はどこにも送信されません。</strong></p>
+        <strong>${promise}</strong></p>
 
       <div class="card">
         <label for="exam">試験</label>
@@ -632,8 +683,9 @@ async function main() {
 
       <p class="note">代わりに、<strong>公表されている合格点だけで言えること</strong>を出しています。
         判定の根拠は「過去◯年のうち何年で合格ラインを超えたか」で、1行で説明できます。</p>
+      ${footer}
     </div>
-    <script>${APP_JS.replace('__EXAMS__', JSON.stringify(exams)).replace('__SUPABASE__', JSON.stringify(SUPABASE_PUBLIC))}</script>
+    <script>${APP_JS.replace('__EXAMS__', JSON.stringify(exams)).replace('__SUPABASE__', JSON.stringify(SUPABASE_PUBLIC)).replace('__BILLING__', JSON.stringify(BILLING_PUBLIC))}</script>
   </body>
 </html>
 `
@@ -642,8 +694,21 @@ async function main() {
   await writeFile(path.join(outDir, 'index.html'), html, 'utf8')
   if (SITE_DOMAIN) await writeFile(path.join(outDir, 'CNAME'), SITE_DOMAIN + NEWLINE, 'utf8')
 
+  // 規約・ポリシー・特商法の表記。**空欄があるうちは書き出さない。**
+  // 空欄のままの表記を公開すると、埋めたつもりの抜けに気づけない。
+  if (LEGAL_READY) {
+    for (const [name, html] of Object.entries(legalPages({ css: PAGE_CSS, escapeHtml }))) {
+      await writeFile(path.join(outDir, name + '.html'), html, 'utf8')
+    }
+  }
+
   const unverified = Object.values(exams).filter((e) => !e.verified).map((e) => e.short)
   console.log(`${Object.keys(exams).length}試験ぶんを書き出しました。`)
+  if (!LEGAL_READY) {
+    console.log('規約・ポリシー・特商法の表記は書き出していません。lib/legal.mjs の空欄: ' + LEGAL_MISSING.join('、'))
+    if (SUPABASE_PUBLIC) console.log('**ログインが有効なのに、プライバシーポリシーがありません。** メールアドレスを預かる前に埋めること。')
+  }
+  console.log(BILLING_PUBLIC ? '**有料会員の申込を受け付けます。**' : '有料会員の申込は受け付けていません（準備中と表示）。')
   if (unverified.length) {
     console.log(`**まだ公式で確かめていない試験: ${unverified.join('・')}**`)
   }

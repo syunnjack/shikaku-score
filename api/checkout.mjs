@@ -1,11 +1,15 @@
 // Stripe の決済ページへ送る。サブスクリプション1本だけ。
 // 依存を増やさないため、Stripe SDK は使わず REST を直接叩く。
 import { configured, userFromRequest, rest, json } from '../lib/supabase.mjs'
+import { LEGAL, billingReady, yen } from '../lib/legal.mjs'
 
 const form = (obj) => new URLSearchParams(obj).toString()
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' })
+  // **表記が揃い、BILLING_ENABLED=1 になるまで課金を受け付けない。** 画面で
+  // ボタンを隠すだけだと、APIを直接叩かれたら決済ページに進めてしまう。
+  if (!billingReady()) return json(res, 503, { error: 'billing_not_started' })
   if (!configured() || !process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_PRICE_ID) {
     return json(res, 503, { error: 'not_configured' })
   }
@@ -29,6 +33,10 @@ export default async function handler(req, res) {
       // Webhook で誰の支払いか照合するために、こちらのユーザーIDを載せる。
       'metadata[user_id]': user.id,
       'subscription_data[metadata][user_id]': user.id,
+      // 決済ページが最終確認画面になるので、そこに解約の条件を出す（特商法12条の6）。
+      'custom_text[submit][message]':
+        '月額' + yen(LEGAL.priceMonthlyYen) + '（税込）。申込日から1か月ごとに自動で更新し、そのつど請求します。' +
+        'いつでも会員欄の「解約する」から解約でき、解約後も期間の終わりまで使えます。日割りの返金はありません。',
       ...(customer ? { customer } : { customer_email: user.email || '' }),
     }
 
