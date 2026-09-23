@@ -61,11 +61,14 @@ export default async function handler(req, res) {
   } else if (event.type === 'customer.subscription.deleted') isPaid = false
   else return json(res, 200, { ok: true, ignored: event.type })
 
+  // **PATCH ではなく upsert。** members の行はどこでも先に作っていないので、
+  // PATCH だと0行更新のまま成功扱いになり、払った人が有料にならない。
   try {
-    await rest('members?id=eq.' + userId, {
-      method: 'PATCH',
-      prefer: 'return=minimal',
+    await rest('members?on_conflict=id', {
+      method: 'POST',
+      prefer: 'resolution=merge-duplicates,return=minimal',
       body: {
+        id: userId,
         is_paid: isPaid,
         ...(obj.customer ? { stripe_customer_id: obj.customer } : {}),
         ...(obj.id && String(obj.id).startsWith('sub_') ? { stripe_subscription_id: obj.id } : {}),
