@@ -47,6 +47,22 @@ const NEWLINE = String.fromCharCode(10)
 // **ドメインはここ1箇所だけで決める。**
 const SITE_DOMAIN = process.env.SITE_DOMAIN || ''
 
+// **canonical。** SITE_DOMAIN が無いときは出さない。
+// github.io のサブパスでも配信されるので、出す先を1つに決めておかないと
+// 同じ内容が2つのURLで取れてしまう（[[gsc-index-warnings]] の重複と同じ形）。
+const SITE_ORIGIN = SITE_DOMAIN ? 'https://' + SITE_DOMAIN : ''
+const CANONICAL_TAGS = SITE_ORIGIN
+  ? [
+      '    <link rel="canonical" href="' + SITE_ORIGIN + '/" />',
+      '    <meta property="og:type" content="website" />',
+      '    <meta property="og:site_name" content="合格ラインとの距離" />',
+      '    <meta property="og:title" content="合格ラインとの距離｜宅建・行政書士" />',
+      '    <meta property="og:url" content="' + SITE_ORIGIN + '/" />',
+      '    <meta property="og:locale" content="ja_JP" />',
+      '    <meta name="twitter:card" content="summary" />',
+    ].join('\n')
+  : ''
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -816,6 +832,7 @@ async function main() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>合格ラインとの距離｜宅建・行政書士</title>
     <meta name="description" content="得点を入れると、合格ラインとの距離と判定が出ます。過去の合格点で判定しているので、根拠を1行で説明できます。${promise}" />
+${CANONICAL_TAGS}
     <style>${PAGE_CSS}</style>
   </head>
   <body>
@@ -879,6 +896,24 @@ async function main() {
   await mkdir(outDir, { recursive: true })
   await writeFile(path.join(outDir, 'index.html'), html, 'utf8')
   if (SITE_DOMAIN) await writeFile(path.join(outDir, 'CNAME'), SITE_DOMAIN + NEWLINE, 'utf8')
+
+  // **robots.txt と sitemap.xml。** SITE_DOMAIN が無いときは置かない。
+  // 規約ページは noindex なので載せない。公開しているのはトップ1枚だけ。
+  if (SITE_DOMAIN) {
+    await writeFile(
+      path.join(outDir, 'robots.txt'),
+      ['User-agent: *', 'Disallow:', '', 'Sitemap: ' + SITE_ORIGIN + '/sitemap.xml', ''].join('\n'),
+      'utf8'
+    )
+    await writeFile(
+      path.join(outDir, 'sitemap.xml'),
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+        '  <url><loc>' + SITE_ORIGIN + '/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n' +
+        '</urlset>\n',
+      'utf8'
+    )
+  }
 
   // 規約・ポリシー・特商法の表記。**空欄があるうちは書き出さない。**
   // 空欄のままの表記を公開すると、埋めたつもりの抜けに気づけない。
