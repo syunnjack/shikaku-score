@@ -60,6 +60,7 @@ const CANONICAL_TAGS = SITE_ORIGIN
       '    <meta property="og:url" content="' + SITE_ORIGIN + '/" />',
       '    <meta property="og:locale" content="ja_JP" />',
       '    <meta name="twitter:card" content="summary" />',
+      '    <meta name="google-site-verification" content="uloKuXs3hH9rLDoxLJ5W8KeEmt8foS76taeLCd0zvig" />',
     ].join('\n')
   : ''
 
