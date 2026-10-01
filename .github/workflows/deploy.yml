@@ -1,15 +1,20 @@
-# 配信は Vercel に任せている（vercel.json 参照）。
+# **GitHub Pages から配信する。**
 #
-# このワークフローは GitHub Pages 用で、いまは自動では走らない。
-# Pages に戻す場合は、下の push トリガーのコメントを外したうえで、
-# Settings → Pages → Build and deployment → Source: GitHub Actions を
-# 一度だけ手で選ぶ。ワークフローからは Pages を有効にできない
-# （GITHUB_TOKEN に権限が無く Resource not accessible by integration になる）。
+# Vercel に寄せる計画だったが、2026-10-01 時点で Import されておらず、
+# erabiyori.jp はパーキングのまま**誰も見られない状態が続いていた。**
+# 作ったものが出ていないほうが悪いので、まず Pages で出す。
+#
+# Pages の有効化はワークフローからはできない（GITHUB_TOKEN に権限が無く
+# Resource not accessible by integration になる）。
+# API なら通る: gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow
+#
+# 独自ドメインを向けるときは、お名前.com の A レコードを
+# 185.199.108〜111.153 に変えてから、Pages の cname を設定する。
 name: Deploy to GitHub Pages
 
 on:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
