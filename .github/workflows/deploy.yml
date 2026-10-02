@@ -39,7 +39,7 @@ jobs:
           node-version: 24
       # 判定の検算。**公表された合格点と足切りだけで決まることを守る。**
       # 繰り返し・学習時間を設定に持ち込んでいないかもここで見る。
-      - run: node --test tests/judge.test.mjs
+      - run: node --test tests/
       - env:
           SITE_DOMAIN: erabiyori.jp
         run: node scripts/build_site.mjs

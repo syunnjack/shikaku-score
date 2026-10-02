@@ -432,7 +432,13 @@ function gapHtml(g, exam) {
           '合計 ' + g.totalGap + '点ぶんの余地があります。') + '</p>'
     : '<p class="gap-verdict">総合では合格点を超えています。上の不足は、崩れたときに効く場所です。</p>'
 
-  const locked = (member.isPaid || !BILLING.available)
+  // **BILLING は課金を開いていない間 null、開いているときだけオブジェクト。**
+  // 以前は BILLING.available を読んでいたが、(1) null のとき例外で render() ごと
+  // 止まり、足切りの行も差分分析も画面に出なくなる。(2) BILLING_PUBLIC に
+  // available という項目は無いので、開いても常に undefined で囲いが効かない。
+  // **存在そのもので判定する。**
+  const billingOpen = !!BILLING
+  const locked = (member.isPaid || !billingOpen)
     ? rest
     : (rest ? '<div class="gap-lock"><p><strong>残り ' + (g.short.length - 1) + ' 形式の内訳と、埋める順番は有料会員で見られます。</strong></p></div>' : '')
 
