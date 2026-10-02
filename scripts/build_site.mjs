@@ -34,7 +34,7 @@
 //
 // 使い方: node scripts/build_site.mjs
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { LEGAL, PLAN, missingLegal, billingEnabledFlag, billingReady, yen } from '../lib/legal.mjs'
@@ -86,6 +86,7 @@ const APP_JS = String.raw`
 const EXAMS = __EXAMS__
 const SUPABASE = __SUPABASE__
 const BILLING = __BILLING__
+const QUIZZES = __QUIZZES__
 
 const $ = (id) => document.getElementById(id)
 
@@ -746,10 +747,170 @@ $('sections').addEventListener('click', function (e) {
   render()
 })
 
-$('exam').addEventListener('change', () => { buildSections(); render(); renderHistory(); renderMemberAverage() })
+
+// ==================== 予想問題 ====================
+// **解いた回数は数えない。答えは送信せず、端末にも残さない。**
+// 出すのは「その回の素点」だけで、それをそのまま判定に渡す。
+var QUIZ = { set: null, answers: {}, graded: false }
+
+function quizzesFor(examKey) { return QUIZZES[examKey] || [] }
+
+function renderQuizPick() {
+  var card = $('quiz-card')
+  var list = quizzesFor($('exam').value)
+  if (!list.length) { card.hidden = true; return }
+  card.hidden = false
+  $('quiz-pick').innerHTML = list.map(function (z, i) {
+    return '<button type="button" class="settab' + (QUIZ.set === z.id ? ' on' : '') +
+      '" data-quiz="' + z.id + '">' + z.title + '</button>'
+  }).join('') + (QUIZ.set ? '<button type="button" class="settab" data-quiz="">閉じる</button>' : '')
+}
+
+function currentQuiz() {
+  return quizzesFor($('exam').value).find(function (z) { return z.id === QUIZ.set }) || null
+}
+
+function renderQuiz() {
+  var box = $('quiz-body')
+  var z = currentQuiz()
+  if (!z) { box.innerHTML = ''; return }
+
+  var auto = z.questions.filter(function (q) { return q.format !== 'kijutsu' })
+  var kij = z.questions.filter(function (q) { return q.format === 'kijutsu' })
+  var done = 0
+  for (var i = 0; i < auto.length; i++) {
+    var q = auto[i]
+    if (q.format === 'tashi') {
+      if (q.blanks.every(function (b, bi) { return QUIZ.answers[q.id + ':' + bi] })) done++
+    } else if (QUIZ.answers[q.id]) done++
+  }
+
+  var head = '<p class="full"><strong>' + done + ' / ' + auto.length + '問</strong>に答えました。' +
+    '記述式' + kij.length + '問は機械で採点できないので、<strong>自己採点の点を下で入れてください</strong>。</p>' +
+    '<p class="gap-note">出典：' + z.sourceOfLaw + '　問題は自作で、過去問の転載はしていません。</p>'
+
+  var qs = auto.map(function (q, n) {
+    var num = '<span class="qnum">' + (n + 1) + '</span>'
+    var tag = '<span class="qtag">' + q.section + '・' + q.points + '点</span>'
+    if (q.format === 'tashi') {
+      var blanks = q.blanks.map(function (b, bi) {
+        var key = q.id + ':' + bi
+        return '<div class="qblank"><span>' + b.label + '</span>' + b.choices.map(function (c, ci) {
+          var on = QUIZ.answers[key] === ci + 1 ? ' on' : ''
+          return '<button type="button" class="qchoice' + on + '" data-q="' + key + '" data-a="' + (ci + 1) + '">' + c + '</button>'
+        }).join('') + '</div>'
+      }).join('')
+      return '<article class="q">' + num + tag + '<p class="qstem">' + q.stem + '</p>' + blanks +
+        (QUIZ.graded ? quizExplain(q) : '') + '</article>'
+    }
+    var ch = q.choices.map(function (c, ci) {
+      var on = QUIZ.answers[q.id] === ci + 1 ? ' on' : ''
+      var mark = QUIZ.graded && q.answer === ci + 1 ? ' right' : ''
+      return '<button type="button" class="qchoice' + on + mark + '" data-q="' + q.id + '" data-a="' + (ci + 1) + '">' +
+        (ci + 1) + '　' + c + '</button>'
+    }).join('')
+    return '<article class="q">' + num + tag + '<p class="qstem">' + q.stem + '</p>' +
+      '<div class="qchoices">' + ch + '</div>' + (QUIZ.graded ? quizExplain(q) : '') + '</article>'
+  }).join('')
+
+  var kijHtml = kij.map(function (q, n) {
+    return '<article class="q"><span class="qnum">記' + (n + 1) + '</span>' +
+      '<span class="qtag">' + q.section + '・' + q.points + '点</span>' +
+      '<p class="qstem">' + q.stem + '</p>' +
+      (QUIZ.graded ? '<p class="qexp"><strong>模範解答</strong>　' + q.modelAnswer +
+        '<br /><strong>根拠</strong>　' + q.source + '<br />' + q.explain + '</p>' : '') +
+      '</article>'
+  }).join('')
+
+  box.innerHTML = head + qs +
+    '<p class="qsec">記述式（自己採点）</p>' + kijHtml +
+    '<label class="qkij">記述式3問の自己採点（0〜60点）' +
+    '<input type="number" id="quiz-kijutsu" min="0" max="60" placeholder="/ 60" value="' +
+    (QUIZ.kijutsu != null ? QUIZ.kijutsu : '') + '" /></label>' +
+    '<button type="button" id="quiz-grade" class="save">採点して、上の欄に入れる</button>' +
+    '<p class="gap-note">採点すると形式別の内訳に切り替わり、出た点がそのまま判定に入ります。' +
+    '<strong>繰り返し解いても点は上がりません。</strong>答えた内容は保存していないので、画面を離れると消えます。</p>'
+}
+
+function quizExplain(q) {
+  return '<p class="qexp"><strong>正解</strong>　' +
+    (q.format === 'tashi' ? q.blanks.map(function (b) { return b.label + b.answer }).join('　') : q.answer) +
+    '<br /><strong>根拠</strong>　' + q.source + '<br />' + q.explain + '</p>'
+}
+
+// **採点。** 形式ごとに素点を出して、そのまま形式別の入力欄に入れる。
+function gradeQuiz() {
+  var z = currentQuiz()
+  if (!z) return
+  var got = { takuitsu: {}, tashi: 0 }
+  for (var i = 0; i < z.questions.length; i++) {
+    var q = z.questions[i]
+    if (q.format === 'takuitsu') {
+      var grp = q.cutoffGroup
+      got.takuitsu[grp] = got.takuitsu[grp] || 0
+      if (QUIZ.answers[q.id] === q.answer) got.takuitsu[grp] += q.points
+    } else if (q.format === 'tashi') {
+      var per = q.points / q.blanks.length
+      for (var bi = 0; bi < q.blanks.length; bi++) {
+        if (QUIZ.answers[q.id + ':' + bi] === q.blanks[bi].answer) got.tashi += per
+      }
+    }
+  }
+  var kij = Number($('quiz-kijutsu') && $('quiz-kijutsu').value) || 0
+  if (kij < 0) kij = 0
+  if (kij > 60) kij = 60
+  QUIZ.kijutsu = kij
+
+  // 形式別に切り替えてから入れる。**科目別には入れない**（形式が対応しないため）
+  SECTION_SET[$('exam').value] = 'format'
+  buildSections()
+  var vals = {
+    '法令等 択一式': got.takuitsu['法令等'] || 0,
+    '法令等 多肢選択式': got.tashi,
+    '法令等 記述式': kij,
+    '基礎知識': got.takuitsu['基礎知識'] || 0,
+  }
+  var total = 0
+  var inputs = document.querySelectorAll('[data-section]')
+  for (var n = 0; n < inputs.length; n++) {
+    var name = inputs[n].dataset.section
+    if (vals[name] === undefined) continue
+    inputs[n].value = vals[name]
+    total += vals[name]
+  }
+  $('score').value = total
+  QUIZ.graded = true
+  renderQuiz()
+  render()
+  $('result').scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+$('quiz-pick').addEventListener('click', function (e) {
+  var k = e.target && e.target.dataset ? e.target.dataset.quiz : null
+  if (k === null || k === undefined) return
+  QUIZ.set = k || null
+  QUIZ.answers = {}
+  QUIZ.graded = false
+  QUIZ.kijutsu = null
+  renderQuizPick()
+  renderQuiz()
+})
+
+$('quiz-body').addEventListener('click', function (e) {
+  var t = e.target
+  if (!t || !t.dataset) return
+  if (t.id === 'quiz-grade') { gradeQuiz(); return }
+  if (t.dataset.q) {
+    QUIZ.answers[t.dataset.q] = Number(t.dataset.a)
+    renderQuiz()
+  }
+})
+
+$('exam').addEventListener('change', () => { QUIZ.set = null; QUIZ.answers = {}; QUIZ.graded = false; buildSections(); render(); renderHistory(); renderMemberAverage(); renderQuizPick(); renderQuiz() })
 $('save').addEventListener('click', addRecord)
 document.addEventListener('input', render)
 buildSections()
+renderQuizPick()
 render()
 renderHistory()
 captureToken()
@@ -815,6 +976,25 @@ select, input[type=number] { font:inherit; font-size:16px; padding:10px 12px;
 .row .v { font-weight:600; }
 .row.good .v { color:#1a7f4b; } .row.warn .v { color:#b8860b; } .row.bad .v { color:#b4232c; }
 .rate { font-size:13px; color:#6b7280; margin:14px 0 0; }
+.q { border-top:1px solid #e5e7eb; padding:16px 0; }
+.qnum { display:inline-block; min-width:28px; height:22px; line-height:22px; text-align:center;
+  background:#1f3a5f; color:#fff; border-radius:4px; font-size:12px; font-weight:700; }
+.qtag { margin-left:8px; font-size:11px; color:#6b7280; }
+.qstem { margin:10px 0 12px; line-height:1.8; }
+.qchoices { display:flex; flex-direction:column; gap:6px; }
+.qchoice { text-align:left; padding:10px 12px; border:1px solid #d1d5db; background:#fff;
+  border-radius:6px; cursor:pointer; font-size:14px; line-height:1.6; }
+.qchoice.on { border-color:#1f3a5f; background:#eef2f7; font-weight:700; }
+.qchoice.right { border-color:#15803d; }
+.qblank { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+.qblank > span { font-weight:700; min-width:22px; }
+.qblank .qchoice { flex:0 0 auto; padding:6px 10px; }
+.qexp { margin:12px 0 0; padding:12px; background:#f8fafc; border-left:3px solid #1f3a5f;
+  font-size:13px; line-height:1.9; }
+.qsec { margin:24px 0 0; font-weight:700; }
+.qkij { display:block; margin:18px 0 10px; font-size:14px; }
+.qkij input { display:block; width:140px; margin-top:6px; }
+#quiz-pick { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 4px; }
 .src { font-size:12px; color:#6b7280; margin:8px 0 0; line-height:1.6; }
 .src a { color:#6b7280; }
 .unverified { font-size:13px; color:#b4232c; margin:10px 0 0;
@@ -853,6 +1033,16 @@ async function main() {
   }
 
   const config = JSON.parse(await readFile(path.join(root, 'config', 'exams.json'), 'utf8'))
+
+  // 予想問題。**無ければ空で進む。** 問題が無くても判定ツールとしては成り立つ。
+  const quizDir = path.join(root, 'config', 'questions')
+  const quizzes = {}
+  try {
+    for (const f of (await readdir(quizDir)).filter((x) => x.endsWith('.json'))) {
+      const qz = JSON.parse(await readFile(path.join(quizDir, f), 'utf8'))
+      ;(quizzes[qz.exam] = quizzes[qz.exam] || []).push(qz)
+    }
+  } catch (e) { /* ディレクトリが無いときは問題なし */ }
   const exams = config.exams
   // **切り替えのために自分の key を持たせる。** 設定側には書かない（重複するため）
   for (const k of Object.keys(exams)) exams[k].key = k
@@ -898,6 +1088,14 @@ ${CANONICAL_TAGS}
         <div id="sections"></div>
       </div>
 
+      <div class="card" id="quiz-card" hidden>
+        <label>予想問題で点を出す</label>
+        <p class="full">自分の点が分からないときは、ここで解くと<strong>そのまま上の欄に入ります</strong>。
+          解いた回数は数えていません。答えた内容はどこにも送信せず、端末にも残しません。</p>
+        <div id="quiz-pick"></div>
+        <div id="quiz-body"></div>
+      </div>
+
       <div id="result"></div>
       <div id="member-average"></div>
 
@@ -933,7 +1131,7 @@ ${CANONICAL_TAGS}
         判定の根拠は「過去◯年のうち何年で合格ラインを超えたか」で、1行で説明できます。</p>
       ${footer}
     </div>
-    <script>${APP_JS.replace('__EXAMS__', JSON.stringify(exams)).replace('__SUPABASE__', JSON.stringify(SUPABASE_PUBLIC)).replace('__BILLING__', JSON.stringify(BILLING_PUBLIC))}</script>
+    <script>${APP_JS.replace('__EXAMS__', JSON.stringify(exams)).replace('__SUPABASE__', JSON.stringify(SUPABASE_PUBLIC)).replace('__BILLING__', JSON.stringify(BILLING_PUBLIC)).replace('__QUIZZES__', JSON.stringify(quizzes))}</script>
   </body>
 </html>
 `
