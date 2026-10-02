@@ -59,7 +59,24 @@ const CANONICAL_TAGS = SITE_ORIGIN
       '    <meta property="og:title" content="合格ラインとの距離｜宅建・行政書士" />',
       '    <meta property="og:url" content="' + SITE_ORIGIN + '/" />',
       '    <meta property="og:locale" content="ja_JP" />',
-      '    <meta name="twitter:card" content="summary" />',
+      '    <meta name="twitter:card" content="summary_large_image" />',
+      '    <meta name="twitter:site" content="@chitamarudev" />',
+      '    <meta name="twitter:creator" content="@chitamarudev" />',
+      '    <meta name="author" content="知多丸" />',
+      '    <meta property="og:image" content="' + SITE_ORIGIN + '/og.png" />',
+      '    <script type="application/ld+json">' + JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'WebApplication',
+        name: '合格ラインとの距離',
+        url: SITE_ORIGIN + '/',
+        applicationCategory: 'EducationalApplication',
+        operatingSystem: 'Web',
+        inLanguage: 'ja',
+        isAccessibleForFree: true,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'JPY' },
+        author: { '@type': 'Person', name: '知多丸', url: 'https://x.com/chitamarudev' },
+        description: '宅建・行政書士の得点を入れると、合格点までの距離と足切りの判定が出ます。'
+      }) + '</script>',
       '    <meta name="google-site-verification" content="uloKuXs3hH9rLDoxLJ5W8KeEmt8foS76taeLCd0zvig" />',
     ].join('\n')
   : ''
@@ -398,7 +415,7 @@ function render() {
 
 
 
-// 差分分析の描画。**無料は先頭1件だけ。全形式の内訳と優先順位は有料会員。**
+// 差分分析の描画。**全形式の内訳を出す。囲わない。**
 // 無料でも「どこが一番落ちているか」は分かる。**有料は、そこから何をどの順で
 // 埋めれば合格点に届くかが全形式ぶん出る。**
 function gapHtml(g, exam) {
@@ -433,15 +450,10 @@ function gapHtml(g, exam) {
           '合計 ' + g.totalGap + '点ぶんの余地があります。') + '</p>'
     : '<p class="gap-verdict">総合では合格点を超えています。上の不足は、崩れたときに効く場所です。</p>'
 
-  // **BILLING は課金を開いていない間 null、開いているときだけオブジェクト。**
-  // 以前は BILLING.available を読んでいたが、(1) null のとき例外で render() ごと
-  // 止まり、足切りの行も差分分析も画面に出なくなる。(2) BILLING_PUBLIC に
-  // available という項目は無いので、開いても常に undefined で囲いが効かない。
-  // **存在そのもので判定する。**
-  const billingOpen = !!BILLING
-  const locked = (member.isPaid || !billingOpen)
-    ? rest
-    : (rest ? '<div class="gap-lock"><p><strong>残り ' + (g.short.length - 1) + ' 形式の内訳と、埋める順番は有料会員で見られます。</strong></p></div>' : '')
+  // **差分の内訳は全部出す。** 2026-10-02、利益より知名度を優先する方針に変えた。
+  // 一番役に立つところを囲うと、使った人が中身を人に説明できない。
+  // 説明できないものは広まらない。BILLING の状態にかかわらず全形式を見せる。
+  const locked = rest
 
   return head + verdict + '<div class="gap-rows">' + first + locked + '</div>' +
     '<p class="gap-note"><strong>この分析は、入れた得点だけを使っています。</strong>' +
@@ -906,11 +918,111 @@ $('quiz-body').addEventListener('click', function (e) {
   }
 })
 
-$('exam').addEventListener('change', () => { QUIZ.set = null; QUIZ.answers = {}; QUIZ.graded = false; buildSections(); render(); renderHistory(); renderMemberAverage(); renderQuizPick(); renderQuiz() })
+// ==================== 公式の10年分 ====================
+// **公表されている数字は全部出す。** 囲わない。
+// 出典・年度・確認日を付けて、読んだ人がそのまま裏を取れるようにする。
+function officialHtml(exam) {
+  var rows = ''
+  var head = ''
+  if (exam.passMarks && exam.passMarks.length) {
+    head = '<tr><th>年度</th><th>合格点</th><th>受験者</th><th>合格者</th><th>合格率</th></tr>'
+    rows = exam.passMarks.slice().reverse().map(function (m) {
+      return '<tr><td>' + (m.label || m.year) + '</td><td><b>' + m.mark + '点</b></td>' +
+        '<td>' + (m.takers ? m.takers.toLocaleString('ja-JP') : '—') + '</td>' +
+        '<td>' + (m.passers ? m.passers.toLocaleString('ja-JP') : '—') + '</td>' +
+        '<td>' + (m.passRate != null ? m.passRate + '%' : '—') + '</td></tr>'
+    }).join('')
+  } else if (exam.results && exam.results.length) {
+    head = '<tr><th>年度</th><th>申込者</th><th>受験者</th><th>合格者</th><th>合格率</th></tr>'
+    rows = exam.results.map(function (r) {
+      return '<tr><td>' + r.year + '</td>' +
+        '<td>' + r.applied.toLocaleString('ja-JP') + '</td>' +
+        '<td>' + r.takers.toLocaleString('ja-JP') + '</td>' +
+        '<td>' + r.passers.toLocaleString('ja-JP') + '</td>' +
+        '<td><b>' + r.passRate + '%</b></td></tr>'
+    }).join('')
+  }
+  if (!rows) return ''
+  var note = exam.type === 'absolute'
+    ? '<p class="gap-note"><strong>合格点は180点で固定です。</strong>動くのは合格率のほうで、' +
+      '問題の難しさが年によって違っても基準は変わりません。足切り（法令等122点・基礎知識24点）も毎年同じです。</p>'
+    : '<p class="gap-note"><strong>合格点は毎年動きます。</strong>上の表は一般受験者（50問中）の基準点で、' +
+      '登録講習修了者（45問中）は別の基準です。「何点取れば合格」が年によって変わるので、' +
+      '過去10年のうち何年で超えていたかで見ます。</p>'
+  return '<div class="card official"><label>公表されている10年分</label>' +
+    '<p class="full">この試験について<strong>公式に出ている数字を、そのまま全部</strong>載せています。</p>' +
+    '<div class="tablewrap"><table class="official-table">' + head + rows + '</table></div>' + note +
+    '<p class="src">出典：' + exam.source +
+    (exam.sourceDocument ? '「' + exam.sourceDocument.split('（')[0] + '」' : '') +
+    (exam.sourceUrl ? ' <a href="' + exam.sourceUrl + '" rel="noopener" target="_blank">公表資料</a>' : '') +
+    (exam.verifiedOn ? '（' + exam.verifiedOn + ' 確認）' : '') + '</p></div>'
+}
+
+function renderOfficial() {
+  var box = $('official')
+  if (!box) return
+  box.innerHTML = officialHtml(EXAMS[$('exam').value])
+}
+
+// ==================== 結果の持ち帰り ====================
+// **出した結果は、自分のものとして持ち帰れるようにする。**
+// サーバに送らないぶん、手元に残す手段がないと次に使えない。
+function resultText() {
+  var exam = EXAMS[$('exam').value]
+  var score = $('score').value
+  if (!score) return ''
+  var lines = ['【' + exam.name + '】合格ラインとの距離', '得点 ' + score + ' / ' + exam.full + exam.unit]
+  var rows = $('result').querySelectorAll('.row')
+  for (var i = 0; i < rows.length; i++) {
+    var k = rows[i].querySelector('.k'), v = rows[i].querySelector('.v')
+    if (k && v) lines.push(k.textContent + '：' + v.textContent)
+  }
+  var gaps = $('result').querySelectorAll('.gap-row')
+  if (gaps.length) {
+    lines.push('', '【合格レベルとの差分】')
+    for (var n = 0; n < gaps.length; n++) {
+      lines.push('  ' + gaps[n].textContent.replace(/\s+/g, ' ').trim())
+    }
+  }
+  lines.push('', 'https://erabiyori.jp/　作：知多丸')
+  return lines.join('\n')
+}
+
+var copyBtn = $('copy-result')
+if (copyBtn) {
+  copyBtn.addEventListener('click', async function () {
+    var t = resultText()
+    if (!t) { copyBtn.textContent = '先に得点を入れてください'; return }
+    try {
+      await navigator.clipboard.writeText(t)
+      copyBtn.textContent = 'コピーしました'
+    } catch (e) {
+      copyBtn.textContent = 'コピーできませんでした'
+    }
+    setTimeout(function () { copyBtn.textContent = '結果をコピーする' }, 2000)
+  })
+}
+var printBtn = $('print-result')
+if (printBtn) printBtn.addEventListener('click', function () { window.print() })
+
+// **共有。** 判定の中身は載せない。点数は本人のものなので、URLにも載せない。
+var shareBtn = $('share')
+if (shareBtn) {
+  shareBtn.addEventListener('click', function () {
+    var text = '合格ラインとの距離｜宅建・行政書士\n' +
+      '得点を入れると、合格点までの距離と足切りの判定が出ます。繰り返しで点が上がる作りにはしていません。'
+    var url = 'https://erabiyori.jp/'
+    window.open('https://x.com/intent/post?text=' + encodeURIComponent(text) +
+      '&url=' + encodeURIComponent(url), '_blank', 'noopener')
+  })
+}
+
+$('exam').addEventListener('change', () => { QUIZ.set = null; QUIZ.answers = {}; QUIZ.graded = false; buildSections(); render(); renderHistory(); renderMemberAverage(); renderQuizPick(); renderQuiz(); renderOfficial() })
 $('save').addEventListener('click', addRecord)
 document.addEventListener('input', render)
 buildSections()
 renderQuizPick()
+renderOfficial()
 render()
 renderHistory()
 captureToken()
@@ -976,6 +1088,21 @@ select, input[type=number] { font:inherit; font-size:16px; padding:10px 12px;
 .row .v { font-weight:600; }
 .row.good .v { color:#1a7f4b; } .row.warn .v { color:#b8860b; } .row.bad .v { color:#b4232c; }
 .rate { font-size:13px; color:#6b7280; margin:14px 0 0; }
+.official-table { width:100%; border-collapse:collapse; font-size:13px; }
+.official-table th, .official-table td { border-bottom:1px solid #e5e7eb; padding:7px 6px; text-align:right; }
+.official-table th { background:#f1f5f9; font-weight:700; text-align:right; }
+.official-table th:first-child, .official-table td:first-child { text-align:left; }
+.tablewrap { overflow-x:auto; margin:10px 0 12px; }
+.takeaway { display:flex; gap:8px; margin:10px 0 0; }
+.ghost { padding:8px 14px; border:1px solid #1f3a5f; background:#fff; color:#1f3a5f;
+  border-radius:6px; cursor:pointer; font-size:13px; }
+@media print {
+  .card, .takeaway, .maker, #quiz-card, #official { display:none !important; }
+  #result { display:block !important; }
+}
+.maker { background:#f8fafc; }
+.maker-links { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 14px; }
+.maker-links a { font-size:13px; color:#1f3a5f; text-decoration:underline; }
 .q { border-top:1px solid #e5e7eb; padding:16px 0; }
 .qnum { display:inline-block; min-width:28px; height:22px; line-height:22px; text-align:center;
   background:#1f3a5f; color:#fff; border-radius:4px; font-size:12px; font-weight:700; }
@@ -1088,15 +1215,21 @@ ${CANONICAL_TAGS}
         <div id="sections"></div>
       </div>
 
+      <div id="official"></div>
+
       <div class="card" id="quiz-card" hidden>
         <label>予想問題で点を出す</label>
-        <p class="full">自分の点が分からないときは、ここで解くと<strong>そのまま上の欄に入ります</strong>。
+        <p class="full">自分の点が分からないときは、ここで解くと<strong>そのまま上の欄に入ります</strong>。<strong>60問すべて無料で、解説と根拠の条文も全部付いています。</strong>
           解いた回数は数えていません。答えた内容はどこにも送信せず、端末にも残しません。</p>
         <div id="quiz-pick"></div>
         <div id="quiz-body"></div>
       </div>
 
       <div id="result"></div>
+      <p class="takeaway">
+        <button type="button" id="copy-result" class="ghost">結果をコピーする</button>
+        <button type="button" id="print-result" class="ghost">印刷する</button>
+      </p>
       <div id="member-average"></div>
 
       <div class="card" id="member-card" hidden>
@@ -1110,6 +1243,21 @@ ${CANONICAL_TAGS}
           そのぶん、ブラウザを変えると引き継げません。</p>
         <button type="button" id="save" class="save">この端末に記録する</button>
         <div id="history-body"></div>
+      </div>
+
+      <div class="card maker">
+        <label>作った人</label>
+        <p class="full"><strong>知多丸</strong>（ちたまる）が作っています。
+          行政書士試験を受けながら、自分が欲しかったものを作りました。<br />
+          <strong>繰り返しで点が上がる作りにしていない</strong>のは、
+          「できるか」と「やったか」が1つの数字になると、どちらも分からなくなるからです。</p>
+        <div class="maker-links">
+          <a href="https://x.com/chitamarudev" rel="noopener" target="_blank">X（@chitamarudev）</a>
+          <a href="https://syunnjack.dev/sites/" rel="noopener" target="_blank">作ったサイト一覧</a>
+          <a href="https://gyosei-yosou.jp/" rel="noopener" target="_blank">行政書士の受験記</a>
+        </div>
+        <button type="button" id="share" class="save">このツールを X で紹介する</button>
+        <p class="gap-note">広告は貼っていません。使ってもらうことだけを考えて作っています。</p>
       </div>
 
       <p class="note"><strong>繰り返し解いた回数は、一切加点していません。</strong>

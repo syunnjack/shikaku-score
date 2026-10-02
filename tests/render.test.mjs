@@ -45,12 +45,15 @@ test('課金を開いていないときは、全形式の内訳を出す（囲�
   assert.ok(!/有料会員で見られます/.test(html), '課金を開いていないのに囲いが出ている')
 })
 
-test('課金を開いたら、2件目以降を囲う', () => {
+// 2026-10-02、利益より知名度を優先する方針に変えた。**差分の内訳は囲わない。**
+// 一番役に立つところを隠すと、使った人が中身を人に説明できない。
+test('課金が開いていても、差分の内訳は囲わない', () => {
   const M = build({ planName: '有料会員（月額）', price: '980円', features: ['a', 'b'] })
   M.setSet('gyosei', 'format')
   const html = M.gapHtml(M.gapAnalysis(gyosei, 168, SCORES), gyosei)
-  assert.match(html, /法令等 記述式/, '先頭1件は無料で出す')
-  assert.match(html, /有料会員で見られます/, '2件目以降が囲われていない')
+  assert.match(html, /法令等 記述式/)
+  assert.match(html, /基礎知識/)
+  assert.ok(!/有料会員で見られます/.test(html), '囲いが復活している')
 })
 
 test('有料会員なら、開いていても全部見える', () => {
