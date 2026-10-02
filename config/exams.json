@@ -9,54 +9,91 @@
       "type": "relative",
       "_type": "relative = 合格点が毎年動く（上位◯%が受かる）",
       "source": "一般財団法人 不動産適正取引推進機構",
-      "sourceUrl": "https://www.retio.or.jp/",
-      "verified": false,
+      "sourceUrl": "https://www.retio.or.jp/exam/",
+      "verified": true,
       "applicants": 245462,
       "passers": 45821,
       "passRate": 18.7,
-      "_populationSource": "ユーザー提供（goutore.jp 経由）。**公式で要確認**",
       "passMarks": [
         {
-          "year": 2015,
-          "mark": 31
-        },
-        {
           "year": 2016,
-          "mark": 35
+          "label": "平成28年度",
+          "mark": 35,
+          "takers": 198463,
+          "passers": 30589,
+          "passRate": 15.4
         },
         {
           "year": 2017,
-          "mark": 35
+          "label": "平成29年度",
+          "mark": 35,
+          "takers": 209354,
+          "passers": 32644,
+          "passRate": 15.6
         },
         {
           "year": 2018,
-          "mark": 37
+          "label": "平成30年度",
+          "mark": 37,
+          "takers": 213993,
+          "passers": 33360,
+          "passRate": 15.6
         },
         {
           "year": 2019,
-          "mark": 35
+          "label": "令和元年度",
+          "mark": 35,
+          "takers": 220797,
+          "passers": 37481,
+          "passRate": 17.0
         },
         {
           "year": 2020,
+          "label": "令和2年度(10月実施)",
           "mark": 38,
-          "note": "10月実施"
+          "takers": 168989,
+          "passers": 29728,
+          "passRate": 17.6
         },
         {
           "year": 2021,
+          "label": "令和3年度(10月実施)",
           "mark": 34,
-          "note": "10月実施"
+          "takers": 209749,
+          "passers": 37579,
+          "passRate": 17.9
         },
         {
           "year": 2022,
-          "mark": 36
+          "label": "令和4年度",
+          "mark": 36,
+          "takers": 226048,
+          "passers": 38525,
+          "passRate": 17.0
         },
         {
           "year": 2023,
-          "mark": 36
+          "label": "令和5年度",
+          "mark": 36,
+          "takers": 233276,
+          "passers": 40025,
+          "passRate": 17.2
         },
         {
           "year": 2024,
-          "mark": 37
+          "label": "令和6年度",
+          "mark": 37,
+          "takers": 241436,
+          "passers": 44992,
+          "passRate": 18.6
+        },
+        {
+          "year": 2025,
+          "label": "令和7年度",
+          "mark": 33,
+          "takers": 245462,
+          "passers": 45821,
+          "passRate": 18.7
         }
       ],
       "sections": [
@@ -77,7 +114,11 @@
           "name": "税・その他",
           "full": 8
         }
-      ]
+      ],
+      "sourceDocument": "試験実施概況（令和7年度以前10年間）（https://www.retio.or.jp/wp-content/uploads/2025/12/10years_result2025.pdf）",
+      "verifiedOn": "2026-10-02",
+      "latestYear": "令和7年度",
+      "_passMarkNote": "一般受験者（50問中）の合格基準点。登録講習修了者は45問中で別基準"
     },
     "gyosei": {
       "name": "行政書士",
@@ -87,12 +128,11 @@
       "type": "absolute",
       "_type": "absolute = 合格点が固定（180点）。足切りもある",
       "source": "一般財団法人 行政書士試験研究センター",
-      "sourceUrl": "https://gyosei-shiken.or.jp/",
-      "verified": false,
+      "sourceUrl": "https://gyosei-shiken.or.jp/doc/exam/index.html",
+      "verified": true,
       "applicants": 50163,
       "passers": 7292,
       "passRate": 14.54,
-      "_populationSource": "ユーザー提供（goutore.jp 経由）。**公式で要確認**",
       "passMark": 180,
       "cutoffs": [
         {
@@ -299,7 +339,82 @@
           ]
         }
       },
-      "defaultSectionSet": "subject"
+      "defaultSectionSet": "subject",
+      "sourceDocument": "最近10年間における行政書士試験実施結果の推移（https://gyosei-shiken.or.jp/pdf/trans.pdf）",
+      "verifiedOn": "2026-10-02",
+      "latestYear": "令和7年度",
+      "results": [
+        {
+          "year": "令和7年度",
+          "applied": 63845,
+          "takers": 50163,
+          "passers": 7292,
+          "passRate": 14.54
+        },
+        {
+          "year": "令和6年度",
+          "applied": 59832,
+          "takers": 47785,
+          "passers": 6165,
+          "passRate": 12.9
+        },
+        {
+          "year": "令和5年度",
+          "applied": 59460,
+          "takers": 46991,
+          "passers": 6571,
+          "passRate": 13.98
+        },
+        {
+          "year": "令和4年度",
+          "applied": 60479,
+          "takers": 47850,
+          "passers": 5802,
+          "passRate": 12.13
+        },
+        {
+          "year": "令和3年度",
+          "applied": 61869,
+          "takers": 47870,
+          "passers": 5353,
+          "passRate": 11.18
+        },
+        {
+          "year": "令和2年度",
+          "applied": 54847,
+          "takers": 41681,
+          "passers": 4470,
+          "passRate": 10.72
+        },
+        {
+          "year": "令和元年度",
+          "applied": 52386,
+          "takers": 39821,
+          "passers": 4571,
+          "passRate": 11.48
+        },
+        {
+          "year": "平成30年度",
+          "applied": 50926,
+          "takers": 39105,
+          "passers": 4968,
+          "passRate": 12.7
+        },
+        {
+          "year": "平成29年度",
+          "applied": 52214,
+          "takers": 40449,
+          "passers": 6360,
+          "passRate": 15.72
+        },
+        {
+          "year": "平成28年度",
+          "applied": 53456,
+          "takers": 41053,
+          "passers": 4084,
+          "passRate": 9.95
+        }
+      ]
     }
   }
 }

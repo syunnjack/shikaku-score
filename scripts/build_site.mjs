@@ -354,9 +354,13 @@ function render() {
     '<p class="rate">この試験の合格率は ' + exam.passRate + '％。' +
     '受験者 ' + exam.applicants.toLocaleString('ja-JP') + '人のうち ' +
     exam.passers.toLocaleString('ja-JP') + '人が合格しています。</p>' +
-    (exam.verified ? '' :
-      '<p class="unverified"><strong>この数値はまだ公式で確かめていません。</strong>' +
-      exam.source + 'の公表資料で確認してください。</p>')
+    (exam.verified
+      ? '<p class="src">出典：' + exam.source +
+        (exam.latestYear ? '「' + exam.latestYear + '」' : '') +
+        (exam.sourceUrl ? ' <a href="' + exam.sourceUrl + '" rel="noopener" target="_blank">公表資料</a>' : '') +
+        (exam.verifiedOn ? '（' + exam.verifiedOn + ' 確認）' : '') + '</p>'
+      : '<p class="unverified"><strong>この数値はまだ公式で確かめていません。</strong>' +
+        exam.source + 'の公表資料で確認してください。</p>')
 }
 
 
@@ -773,6 +777,8 @@ select, input[type=number] { font:inherit; font-size:16px; padding:10px 12px;
 .row .v { font-weight:600; }
 .row.good .v { color:#1a7f4b; } .row.warn .v { color:#b8860b; } .row.bad .v { color:#b4232c; }
 .rate { font-size:13px; color:#6b7280; margin:14px 0 0; }
+.src { font-size:12px; color:#6b7280; margin:8px 0 0; line-height:1.6; }
+.src a { color:#6b7280; }
 .unverified { font-size:13px; color:#b4232c; margin:10px 0 0;
               border-left:3px solid #b4232c; padding-left:12px; }
 .mock { margin:16px 0 0; border:1px solid #e2e6ef; border-radius:8px; background:#fff; padding:16px; }
