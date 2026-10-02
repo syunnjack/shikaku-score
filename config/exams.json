@@ -290,28 +290,34 @@
           "sections": [
             {
               "name": "基礎法学",
-              "full": 8
+              "full": 8,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "憲法",
-              "full": 28
+              "full": 28,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "民法",
-              "full": 76
+              "full": 76,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "行政法",
-              "full": 112
+              "full": 112,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "商法・会社法",
-              "full": 20
+              "full": 20,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "基礎知識",
               "full": 56,
-              "warn": "24点未満で足切り"
+              "warn": "24点未満で足切り",
+              "cutoffGroup": "基礎知識"
             }
           ]
         },
@@ -321,20 +327,24 @@
           "sections": [
             {
               "name": "法令等 択一式",
-              "full": 160
+              "full": 160,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "法令等 多肢選択式",
-              "full": 24
+              "full": 24,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "法令等 記述式",
-              "full": 60
+              "full": 60,
+              "cutoffGroup": "法令等"
             },
             {
               "name": "基礎知識",
               "full": 56,
-              "warn": "24点未満で足切り"
+              "warn": "24点未満で足切り",
+              "cutoffGroup": "基礎知識"
             }
           ]
         }
@@ -414,7 +424,8 @@
           "passers": 4084,
           "passRate": 9.95
         }
-      ]
+      ],
+      "_cutoffNote": "各区分の cutoffGroup を合算して足切りを判定する。「法令等」は単独の区分として存在せず、科目別なら5科目の合計、形式別なら択一+多肢+記述の合計（どちらも244点）。**合算できる区分がすべて入力されているときだけ判定する。** 一部だけ入れた状態で足切り割れと出すと誤判定になる。"
     }
   }
 }

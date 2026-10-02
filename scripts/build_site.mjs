@@ -195,14 +195,46 @@ function judge(exam, score, sectionScores) {
     })
 
     // **足切りは総合点に埋めない。** 総合が足りていても、ここで落ちる。
+    //
+    // 「法令等」は単独の入力欄が無い。科目別なら5科目、形式別なら択一+多肢+記述の
+    // 合計がそれに当たる（どちらも244点）。だから **cutoffGroup で合算してから判定する。**
+    // 区分名を直接引くと、法令等の足切りが一度も判定されない。
+    //
+    // **合算できる区分がすべて埋まっているときだけ判定する。** 一部だけ入れた状態で
+    // 「下回っています」と出すと、入れ忘れを足切り割れと誤報する。
+    const groupGot = {}
+    const groupFilled = {}
+    const groupTotal = {}
+    for (const sec of activeSections(exam)) {
+      const grp = sec.cutoffGroup || sec.name
+      groupTotal[grp] = (groupTotal[grp] || 0) + 1
+      const v = sectionScores[sec.name]
+      if (v === null || v === undefined) continue
+      groupGot[grp] = (groupGot[grp] || 0) + v
+      groupFilled[grp] = (groupFilled[grp] || 0) + 1
+    }
+
     for (const cut of exam.cutoffs || []) {
-      const got = sectionScores[cut.name]
-      if (got === null || got === undefined) continue
+      const filled = groupFilled[cut.name] || 0
+      const total = groupTotal[cut.name] || 0
+      if (!total) continue
+      if (filled === 0) continue
+      if (filled < total) {
+        out.rows.push({
+          label: cut.name + 'の足切り',
+          value: '未判定（' + total + '区分のうち' + filled + '件しか入っていません）',
+          tone: 'warn',
+        })
+        continue
+      }
+      const got = groupGot[cut.name]
       const ok = got >= cut.min
       if (!ok) out.blocked = cut.name
       out.rows.push({
         label: cut.name + 'の足切り',
-        value: got + ' / ' + cut.min + '点以上' + (ok ? '（超えています）' : '（**下回っています**）'),
+        value: got + ' / ' + cut.min + '点以上'
+          + (total > 1 ? '（' + total + '区分の合計）' : '')
+          + (ok ? '（超えています）' : '（**下回っています**）'),
         tone: ok ? 'good' : 'bad',
       })
     }
